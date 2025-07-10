@@ -1,0 +1,17 @@
+.{
+    .name = .datapipes,
+    .version = "0.0.0",
+    .fingerprint = 0x1ac3c396cdc5c245,
+    .minimum_zig_version = "0.14.0",
+    .dependencies = .{
+        .libxev = .{
+            .url = "https://github.com/mitchellh/libxev/archive/52af1e67c14f5d3a4b8ed64d60b09de76b0b9b29.tar.gz",
+            .hash = "libxev-0.0.0-86vtcxMBEwDSASHqIPjQiAfOrSU4zzlesK0kl98Vw8S3",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}
