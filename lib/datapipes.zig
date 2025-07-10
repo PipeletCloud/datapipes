@@ -23,9 +23,19 @@ pub const Value = union(enum) {
     }
 };
 
+pub const outputs = @import("datapipes/outputs.zig");
+
 pub const Runner = @import("datapipes/Runner.zig");
+pub const Output = @import("datapipes/Output.zig");
+pub const Source = @import("datapipes/Source.zig");
+pub const Step = @import("datapipes/Step.zig");
 
 test {
+    _ = outputs;
+
     _ = Value;
     _ = Runner;
+    _ = Output;
+    _ = Source;
+    _ = Step;
 }
