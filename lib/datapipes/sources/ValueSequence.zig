@@ -24,7 +24,6 @@ pub fn create(alloc: Allocator, seq: []const Value) !*Step {
     };
 
     for (seq) |item| {
-        // TODO: duplicate the item
         try self.seq.append(alloc, try item.dupe(alloc));
     }
 

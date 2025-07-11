@@ -56,7 +56,7 @@ test {
     try runner.pushJob(alloc, (struct {
         fn func(a: Allocator, o: *std.ArrayList(u8), r: *Runner) !?Value {
             const seq = try ValueSequence.create(a, &.{
-                .{ .buffered = .{ .unstructured = "Hello, world" } }
+                .{ .buffered = .{ .unstructured = "Hello, world" } },
             });
             defer seq.unref(a);
 
