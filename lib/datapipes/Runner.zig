@@ -61,6 +61,15 @@ fn findAvailableCore(self: *Self, alloc: Allocator) !?*Core {
     return null;
 }
 
+pub fn isDone(self: *Self) bool {
+    for (self.cores) |*opt_core| {
+        if (opt_core.*) |core| {
+            if (!core.isDone()) return false;
+        }
+    }
+    return true;
+}
+
 pub fn pushJob(self: *Self, alloc: Allocator, comptime f: anytype, args: anytype, result: ?*?Job.Result) !void {
     if (try self.findAvailableCore(alloc)) |core| {
         return try core.pushJob(alloc, f, args, result);
@@ -69,7 +78,27 @@ pub fn pushJob(self: *Self, alloc: Allocator, comptime f: anytype, args: anytype
     return error.TooManyJobs;
 }
 
-pub fn run(self: *Self) !void {
+pub fn runSync(self: *Self) !void {
+    if (ThreadPool != void) {
+        var batch: ThreadPool.Batch = .{};
+        for (self.cores) |*opt_core| {
+            if (opt_core.*) |core| {
+                batch.push(.from(&core.task));
+            }
+        }
+
+        self.thread_pool.schedule(batch);
+        self.wait();
+    } else {
+        for (self.cores) |*opt_core| {
+            if (opt_core.*) |core| {
+                try core.run();
+            }
+        }
+    }
+}
+
+pub fn runAsync(self: *Self) !void {
     if (ThreadPool != void) {
         var batch: ThreadPool.Batch = .{};
         for (self.cores) |*opt_core| {
@@ -85,6 +114,12 @@ pub fn run(self: *Self) !void {
                 try core.run();
             }
         }
+    }
+}
+
+pub fn wait(self: *Self) void {
+    while (true) {
+        if (self.isDone()) break;
     }
 }
 

@@ -25,6 +25,7 @@ pub const Result = union(enum) {
 pub const RunFunc = *const fn (?*anyopaque) anyerror!?Result.Value;
 pub const DeinitFunc = *const fn (*anyopaque, Allocator) void;
 
+allocator: Allocator,
 ptr: ?*anyopaque,
 deinitFn: ?DeinitFunc,
 runFn: RunFunc,
@@ -37,6 +38,7 @@ pub fn create(alloc: Allocator, loop: *xev.Loop, ptr: *anyopaque, deinitFn: ?Dei
     errdefer alloc.destroy(self);
 
     self.* = .{
+        .allocator = alloc,
         .ptr = ptr,
         .deinitFn = deinitFn,
         .runFn = runFn,
@@ -58,6 +60,10 @@ pub fn deinit(self: *Self, alloc: Allocator) void {
     alloc.destroy(self);
 }
 
+pub fn isDone(self: *Self) bool {
+    return if (self.result) |result| result == .value else false;
+}
+
 fn waitCallback(self_: ?*Self, _: *xev.Loop, _: *xev.Completion, r: xev.Async.WaitError!void) xev.CallbackAction {
     const self = self_ orelse unreachable;
     _ = r catch |err| {
@@ -73,6 +79,10 @@ fn waitCallback(self_: ?*Self, _: *xev.Loop, _: *xev.Completion, r: xev.Async.Wa
 pub fn run(self: *Self) bool {
     if (self.result) |_| return false;
 
-    self.result = if (self.runFn(self.ptr)) |value| .{ .value = value } else |err| .{ .err = .{ .tag = @errorName(err) } };
+    self.result = if (self.runFn(self.ptr)) |value| .{
+        .value = if (value) |v| v.dupe(self.allocator) catch return false else null,
+    } else |err| .{
+        .err = .{ .tag = @errorName(err) },
+    };
     return true;
 }

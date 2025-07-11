@@ -34,6 +34,15 @@ fn runTask(task: *Task) void {
     self.run() catch unreachable;
 }
 
+pub fn isDone(self: *Self) bool {
+    for (self.jobs) |*opt_job| {
+        if (opt_job.*) |job| {
+            if (!job.isDone()) return false;
+        }
+    }
+    return true;
+}
+
 pub fn run(self: *Self) !void {
     for (self.jobs) |*opt_job| {
         if (opt_job.*) |job| {

@@ -32,7 +32,10 @@ fn run(o: *anyopaque, alloc: Allocator, value: Value, _: *Runner) anyerror!void 
 
     if (stream.reader()) |*reader| {
         const a = @constCast(reader).any();
-        try a.streamUntilDelimiter(self.stream, 0, null);
+        while (a.readByte() catch |err| switch (err) {
+            error.EndOfStream => null,
+            else => return err,
+        }) |byte| try self.stream.writeByte(byte);
     } else {
         return error.NotImplemented;
     }
@@ -53,22 +56,18 @@ test {
     var output = std.ArrayList(u8).init(alloc);
     defer output.deinit();
 
-    try runner.pushJob(alloc, (struct {
-        fn func(a: Allocator, o: *std.ArrayList(u8), r: *Runner) !?Value {
-            const seq = try ValueSequence.create(a, &.{
-                .{ .buffered = .{ .unstructured = "Hello, world" } },
-            });
-            defer seq.unref(a);
+    const seq = try ValueSequence.create(alloc, &.{
+        .{ .buffered = .{ .unstructured = "Hello, world" } },
+    });
+    defer seq.unref(alloc);
 
-            const self = try create(a, o.writer().any());
-            defer self.unref(a);
+    const self = try create(alloc, output.writer().any());
+    defer self.unref(alloc);
 
-            self.pipe(a, seq);
+    self.pipe(alloc, seq);
 
-            return try self.run(a, r);
-        }
-    }).func, .{ alloc, &output, &runner }, null);
-    try runner.run();
+    _ = try self.run(alloc, &runner);
+    try runner.runSync();
 
     try std.testing.expectEqualStrings("Hello, world", output.items);
 }

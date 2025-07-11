@@ -46,5 +46,6 @@ fn vtable_run(o: *anyopaque, alloc: Allocator, _: ?*Step, runner: *Runner) !?Val
 
 fn vtable_deinit(o: *anyopaque, alloc: Allocator) void {
     const self: *Self = @ptrCast(@alignCast(o));
+    if (self.output) |*out| out.deinit(alloc);
     self.vtable.deinit(self.ptr, alloc);
 }

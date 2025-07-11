@@ -163,7 +163,7 @@ test {
             return try io_stream.run(a, r);
         }
     }).func, .{ alloc, &output, &runner }, null);
-    try runner.run();
+    try runner.runSync();
 
     try std.testing.expectEqualStrings(@embedFile("Process.zig"), output.items);
 }
