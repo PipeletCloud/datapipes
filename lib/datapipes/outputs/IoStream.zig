@@ -24,9 +24,18 @@ pub fn create(alloc: Allocator, stream: std.io.AnyWriter) !*Step {
     return &self.output.step;
 }
 
-fn run(o: *anyopaque, _: Allocator, value: Value, _: *Runner) anyerror!void {
+fn run(o: *anyopaque, alloc: Allocator, value: Value, _: *Runner) anyerror!void {
     const self: *Self = @ptrCast(@alignCast(o));
-    try self.stream.print("{?}\n", .{value});
+
+    var stream = try value.asStream(alloc);
+    defer stream.deinit(alloc);
+
+    if (stream.reader()) |*reader| {
+        const a = @constCast(reader).any();
+        try a.streamUntilDelimiter(self.stream, 0, null);
+    } else {
+        return error.NotImplemented;
+    }
 }
 
 fn deinit(o: *anyopaque, alloc: Allocator) void {
@@ -62,5 +71,5 @@ test {
     }).func, .{ alloc, &output, &runner }, null);
     try runner.run();
 
-    std.debug.print("{s}\n", .{output.items});
+    try std.testing.expectEqualStrings("Hello, world", output.items);
 }
