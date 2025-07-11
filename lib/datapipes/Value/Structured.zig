@@ -14,8 +14,15 @@ pub const Value = union(enum) {
     boolean: bool,
     null: void,
 
-    pub fn deinit(self: Value, alloc: Allocator) void {
-        return switch (self) {
+    pub fn dupe(self: *const Value, alloc: Allocator) !Value {
+        return switch (self.*) {
+            .string => |value| .{ .string = try alloc.dupe(u8, value) },
+            inline else => |v, t| @unionInit(Value, @tagName(t), v),
+        };
+    }
+
+    pub fn deinit(self: *Value, alloc: Allocator) void {
+        return switch (self.*) {
             .string => |value| alloc.free(value),
             inline else => {},
         };
@@ -36,8 +43,26 @@ pub const Entry = struct {
 
 map: ValueMap,
 
+pub fn dupe(self: *const Self, alloc: Allocator) !Self {
+    var map: ValueMap = .{};
+
+    var iter = self.map.iterator();
+    while (iter.next()) |entry| {
+        const key = try alloc.dupe(u8, entry.key_ptr.*);
+        errdefer alloc.free(key);
+
+        var value = try entry.value_ptr.*.dupe(alloc);
+        errdefer value.deinit(alloc);
+
+        try map.put(alloc, key, value);
+    }
+
+    return .{ .map = map };
+}
+
 pub fn deinit(self: *Self, alloc: Allocator) void {
     self.map.deinit(alloc);
+    alloc.destroy(self);
 }
 
 pub const Stream = struct {
@@ -48,6 +73,7 @@ pub const Stream = struct {
 
     pub const VTable = struct {
         read: *const fn (*anyopaque, alloc: Allocator) anyerror!?Entry,
+        dupe: *const fn (*anyopaque, alloc: Allocator) anyerror!*Stream,
         deinit: *const fn (*anyopaque, alloc: Allocator) void,
     };
 
@@ -72,6 +98,10 @@ pub const Stream = struct {
             return entry;
         }
         return null;
+    }
+
+    pub fn dupe(self: *Stream, alloc: Allocator) !*Stream {
+        return self.vtable.dupe(self.ptr, alloc);
     }
 
     pub fn deinit(self: *Stream, alloc: Allocator) void {

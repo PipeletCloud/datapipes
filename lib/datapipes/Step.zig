@@ -10,20 +10,30 @@ pub const Map = struct {
     output: ?Value,
 };
 
+pub const Kind = enum {
+    source,
+    transformation,
+    output,
+};
+
 pub const VTable = struct {
-    getInput: ?*const fn (*anyopaque) error{NoInput}!*?Value,
-    getOutput: ?*const fn (*anyopaque) error{NoOutput}!*?Value,
+    getInput: ?*const fn (*anyopaque, Allocator, *Self, *Runner) anyerror!*?Value,
+    getOutput: ?*const fn (*anyopaque, Allocator, *Self, *Runner) anyerror!*?Value,
     run: *const fn (*anyopaque, Allocator, *Self, *Runner) anyerror!?Value,
     deinit: *const fn (*anyopaque, Allocator) void,
 };
 
+tag: []const u8,
+kind: Kind,
 ref_count: usize,
 ptr: *anyopaque,
 vtable: *const VTable,
 pipes: std.ArrayListUnmanaged(Map),
 
-pub inline fn init(ptr: *anyopaque, vtable: *const VTable) Self {
+pub inline fn init(tag: []const u8, kind: Kind, ptr: *anyopaque, vtable: *const VTable) Self {
     return .{
+        .tag = tag,
+        .kind = kind,
         .ref_count = 0,
         .ptr = ptr,
         .vtable = vtable,
@@ -31,16 +41,16 @@ pub inline fn init(ptr: *anyopaque, vtable: *const VTable) Self {
     };
 }
 
-pub fn getInput(self: *Self) !*?Value {
+pub fn getInput(self: *Self, alloc: Allocator, step: *Self, runner: *Runner) !*?Value {
     if (self.vtable.getInput) |f| {
-        return f(self.ptr);
+        return f(self.ptr, alloc, step, runner);
     }
     return error.NoInput;
 }
 
-pub fn getOutput(self: *Self) !*?Value {
+pub fn getOutput(self: *Self, alloc: Allocator, step: *Self, runner: *Runner) !*?Value {
     if (self.vtable.getOutput) |f| {
-        return f(self.ptr);
+        return f(self.ptr, alloc, step, runner);
     }
     return error.NoOutput;
 }
@@ -52,6 +62,8 @@ pub fn deinit(self: *Self, alloc: Allocator) void {
         i.input.unref(alloc);
         if (i.output) |*o| o.deinit(alloc);
     }
+
+    self.pipes.deinit(alloc);
 
     self.vtable.deinit(self.ptr, alloc);
 }
