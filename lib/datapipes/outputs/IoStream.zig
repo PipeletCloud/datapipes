@@ -63,10 +63,9 @@ test {
             const self = try create(a, o.writer().any());
             defer self.unref(a);
 
-            try self.pipe(a, seq);
+            self.pipe(a, seq);
 
-            try self.run(a, r);
-            return null;
+            return try self.run(a, r);
         }
     }).func, .{ alloc, &output, &runner }, null);
     try runner.run();

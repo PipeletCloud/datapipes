@@ -1,4 +1,5 @@
 const std = @import("std");
+const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
 const Runner = @import("Runner.zig");
 const Value = @import("../datapipes.zig").Value;
@@ -6,7 +7,7 @@ const Step = @import("Step.zig");
 const Self = @This();
 
 pub const VTable = struct {
-    run: *const fn (*anyopaque, Allocator, *Step, *Runner) anyerror!?Value,
+    run: *const fn (*anyopaque, Allocator, ?*Step, *Runner) anyerror!?Value,
     deinit: *const fn (*anyopaque, Allocator) void,
 };
 
@@ -31,15 +32,16 @@ pub inline fn init(tag: []const u8, self: *Self, ptr: *anyopaque, vtable: *const
     };
 }
 
-fn vtable_getOutput(o: *anyopaque, alloc: Allocator, step: *Step, runner: *Runner) anyerror!*?Value {
+fn vtable_getOutput(o: *anyopaque, alloc: Allocator, step: ?*Step, runner: *Runner) anyerror!*?Value {
     const self: *Self = @ptrCast(@alignCast(o));
+    assert(step != &self.step);
     self.output = try self.vtable.run(self.ptr, alloc, step, runner);
     return &self.output;
 }
 
-fn vtable_run(o: *anyopaque, alloc: Allocator, step: *Step, runner: *Runner) !?Value {
+fn vtable_run(o: *anyopaque, alloc: Allocator, _: ?*Step, runner: *Runner) !?Value {
     const self: *Self = @ptrCast(@alignCast(o));
-    return (try self.step.getOutput(alloc, step, runner)).*;
+    return (try self.step.getOutput(alloc, runner)).*;
 }
 
 fn vtable_deinit(o: *anyopaque, alloc: Allocator) void {

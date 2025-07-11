@@ -5,11 +5,6 @@ const Runner = @import("Runner.zig");
 const Value = @import("../datapipes.zig").Value;
 const Self = @This();
 
-pub const Map = struct {
-    input: *Self,
-    output: ?Value,
-};
-
 pub const Kind = enum {
     source,
     transformation,
@@ -17,9 +12,9 @@ pub const Kind = enum {
 };
 
 pub const VTable = struct {
-    getInput: ?*const fn (*anyopaque, Allocator, *Self, *Runner) anyerror!*?Value,
-    getOutput: ?*const fn (*anyopaque, Allocator, *Self, *Runner) anyerror!*?Value,
-    run: *const fn (*anyopaque, Allocator, *Self, *Runner) anyerror!?Value,
+    getInput: ?*const fn (*anyopaque, Allocator, ?*Self, *Runner) anyerror!*?Value,
+    getOutput: ?*const fn (*anyopaque, Allocator, ?*Self, *Runner) anyerror!*?Value,
+    run: *const fn (*anyopaque, Allocator, ?*Self, *Runner) anyerror!?Value,
     deinit: *const fn (*anyopaque, Allocator) void,
 };
 
@@ -28,7 +23,7 @@ kind: Kind,
 ref_count: usize,
 ptr: *anyopaque,
 vtable: *const VTable,
-pipes: std.ArrayListUnmanaged(Map),
+pipe_from: ?*Self,
 
 pub inline fn init(tag: []const u8, kind: Kind, ptr: *anyopaque, vtable: *const VTable) Self {
     return .{
@@ -37,20 +32,22 @@ pub inline fn init(tag: []const u8, kind: Kind, ptr: *anyopaque, vtable: *const 
         .ref_count = 0,
         .ptr = ptr,
         .vtable = vtable,
-        .pipes = .{},
+        .pipe_from = null,
     };
 }
 
-pub fn getInput(self: *Self, alloc: Allocator, step: *Self, runner: *Runner) !*?Value {
+pub fn getInput(self: *Self, alloc: Allocator, runner: *Runner) !*?Value {
     if (self.vtable.getInput) |f| {
-        return f(self.ptr, alloc, step, runner);
+        assert(self.pipe_from != self);
+        return f(self.ptr, alloc, self.pipe_from, runner);
     }
     return error.NoInput;
 }
 
-pub fn getOutput(self: *Self, alloc: Allocator, step: *Self, runner: *Runner) !*?Value {
+pub fn getOutput(self: *Self, alloc: Allocator, runner: *Runner) !*?Value {
     if (self.vtable.getOutput) |f| {
-        return f(self.ptr, alloc, step, runner);
+        assert(self.pipe_from != self);
+        return f(self.ptr, alloc, self.pipe_from, runner);
     }
     return error.NoOutput;
 }
@@ -58,12 +55,7 @@ pub fn getOutput(self: *Self, alloc: Allocator, step: *Self, runner: *Runner) !*
 pub fn deinit(self: *Self, alloc: Allocator) void {
     assert(self.ref_count == 0);
 
-    for (self.pipes.items) |*i| {
-        i.input.unref(alloc);
-        if (i.output) |*o| o.deinit(alloc);
-    }
-
-    self.pipes.deinit(alloc);
+    if (self.pipe_from) |i| i.unref(alloc);
 
     self.vtable.deinit(self.ptr, alloc);
 }
@@ -82,16 +74,12 @@ pub fn ref(self: *Self) *Self {
     return self;
 }
 
-pub fn pipe(self: *Self, alloc: Allocator, source: *Self) !void {
-    try self.pipes.append(alloc, .{
-        .input = source.ref(),
-        .output = null,
-    });
+pub fn pipe(self: *Self, alloc: Allocator, source: *Self) void {
+    assert(source != self);
+    if (self.pipe_from) |i| i.unref(alloc);
+    self.pipe_from = source.ref();
 }
 
-pub fn run(self: *Self, alloc: Allocator, runner: *Runner) !void {
-    for (self.pipes.items) |*p| {
-        if (p.output) |*o| o.deinit(alloc);
-        p.output = try self.vtable.run(self.ptr, alloc, p.input, runner);
-    }
+pub fn run(self: *Self, alloc: Allocator, runner: *Runner) !?Value {
+    return try self.vtable.run(self.ptr, alloc, self.pipe_from, runner);
 }

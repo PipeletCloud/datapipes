@@ -105,6 +105,7 @@ pub const Value = union(enum) {
 };
 
 pub const outputs = @import("datapipes/outputs.zig");
+pub const transformations = @import("datapipes/transformations.zig");
 pub const sources = @import("datapipes/sources.zig");
 
 pub const Runner = @import("datapipes/Runner.zig");
@@ -114,6 +115,7 @@ pub const Step = @import("datapipes/Step.zig");
 
 test {
     _ = outputs;
+    _ = transformations;
     _ = sources;
 
     _ = Value;

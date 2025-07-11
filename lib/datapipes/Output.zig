@@ -1,4 +1,5 @@
 const std = @import("std");
+const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
 const Runner = @import("Runner.zig");
 const Value = @import("../datapipes.zig").Value;
@@ -31,15 +32,17 @@ pub inline fn init(tag: []const u8, self: *Self, ptr: *anyopaque, vtable: *const
     };
 }
 
-fn vtable_getInput(o: *anyopaque, alloc: Allocator, step: *Step, runner: *Runner) !*?Value {
+fn vtable_getInput(o: *anyopaque, alloc: Allocator, step: ?*Step, runner: *Runner) !*?Value {
     const self: *Self = @ptrCast(@alignCast(o));
-    self.input = (try step.getOutput(alloc, step, runner)).*;
+    assert(step != &self.step);
+    self.input = if (step) |s| (try s.getOutput(alloc, runner)).* else null;
     return &self.input;
 }
 
-fn vtable_run(o: *anyopaque, alloc: Allocator, step: *Step, runner: *Runner) !?Value {
+fn vtable_run(o: *anyopaque, alloc: Allocator, step: ?*Step, runner: *Runner) !?Value {
     const self: *Self = @ptrCast(@alignCast(o));
-    const input = try self.step.getInput(alloc, step, runner);
+    assert(step != &self.step);
+    const input = try self.step.getInput(alloc, runner);
     try self.vtable.run(self.ptr, alloc, input.* orelse return null, runner);
     return null;
 }

@@ -30,7 +30,7 @@ pub fn create(alloc: Allocator, seq: []const Value) !*Step {
     return &self.source.step;
 }
 
-fn run(o: *anyopaque, _: Allocator, _: *Step, _: *Runner) anyerror!?Value {
+fn run(o: *anyopaque, _: Allocator, _: ?*Step, _: *Runner) anyerror!?Value {
     const self: *Self = @ptrCast(@alignCast(o));
     if (self.index < self.seq.items.len) {
         const value = self.seq.items[self.index];
