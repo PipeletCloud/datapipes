@@ -17,12 +17,21 @@ const vtable_step: Step.VTable = .{
     .deinit = vtable_deinit,
 };
 
-step: *Step,
+step: Step,
 ptr: *anyopaque,
 vtable: *const VTable,
 input: ?Value,
 
-fn vtable_getInput(o: *anyopaque) !Value {
+pub inline fn init(self: *Self, ptr: *anyopaque, vtable: *const VTable) Self {
+    return .{
+        .step = .init(self, &vtable_step),
+        .ptr = ptr,
+        .vtable = vtable,
+        .input = null,
+    };
+}
+
+fn vtable_getInput(o: *anyopaque) !*?Value {
     const self: *Self = @ptrCast(@alignCast(o));
     return &self.input;
 }
@@ -30,8 +39,8 @@ fn vtable_getInput(o: *anyopaque) !Value {
 fn vtable_run(o: *anyopaque, alloc: Allocator, step: *Step, runner: *Runner) !?Value {
     const self: *Self = @ptrCast(@alignCast(o));
     const input = try step.getOutput();
-    self.input = input;
-    try self.vtable.run(self.ptr, alloc, input, runner);
+    self.input = input.*;
+    try self.vtable.run(self.ptr, alloc, input.*, runner);
     return null;
 }
 

@@ -36,6 +36,10 @@ pub const Entry = struct {
 
 map: ValueMap,
 
+pub fn deinit(self: *Self, alloc: Allocator) void {
+    self.map.deinit(alloc);
+}
+
 pub const Stream = struct {
     ptr: *anyopaque,
     vtable: *const VTable,

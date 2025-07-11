@@ -7,7 +7,7 @@ const Self = @This();
 
 pub const Map = struct {
     input: *Self,
-    output: ?*Value,
+    output: ?Value,
 };
 
 pub const VTable = struct {
@@ -21,6 +21,15 @@ ref_count: usize,
 ptr: *anyopaque,
 vtable: *const VTable,
 pipes: std.ArrayListUnmanaged(Map),
+
+pub inline fn init(ptr: *anyopaque, vtable: *const VTable) Self {
+    return .{
+        .ref_count = 0,
+        .ptr = ptr,
+        .vtable = vtable,
+        .pipes = .{},
+    };
+}
 
 pub fn getInput(self: *Self) !*?Value {
     if (self.vtable.getInput) |f| {
@@ -39,12 +48,12 @@ pub fn getOutput(self: *Self) !*?Value {
 pub fn deinit(self: *Self, alloc: Allocator) void {
     assert(self.ref_count == 0);
 
-    for (self.pipes.items) |i| {
+    for (self.pipes.items) |*i| {
         i.input.unref(alloc);
-        if (i.output) |o| o.deinit(alloc);
+        if (i.output) |*o| o.deinit(alloc);
     }
 
-    self.deinit(self.ptr, alloc);
+    self.vtable.deinit(self.ptr, alloc);
 }
 
 pub fn unref(self: *Self, alloc: Allocator) void {
@@ -70,7 +79,7 @@ pub fn pipe(self: *Self, alloc: Allocator, source: *Self) !void {
 
 pub fn run(self: *Self, alloc: Allocator, runner: *Runner) !void {
     for (self.pipes.items) |*p| {
-        if (p.output) |o| o.deinit(alloc);
+        if (p.output) |*o| o.deinit(alloc);
         p.output = try self.vtable.run(self.ptr, alloc, p.input, runner);
     }
 }

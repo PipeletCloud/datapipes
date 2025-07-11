@@ -1,0 +1,56 @@
+const std = @import("std");
+const Allocator = std.mem.Allocator;
+const Output = @import("../Output.zig");
+const Step = @import("../Step.zig");
+const Runner = @import("../Runner.zig");
+const Value = @import("../../datapipes.zig").Value;
+const Self = @This();
+
+output: Output,
+stream: std.io.AnyWriter,
+
+pub fn create(alloc: Allocator, stream: std.io.AnyWriter) !*Step {
+    const self = try alloc.create(Self);
+    errdefer alloc.destroy(self);
+
+    self.* = .{
+        .output = .init(&self.output, self, &.{
+            .run = run,
+            .deinit = deinit,
+        }),
+        .stream = stream,
+    };
+    return &self.output.step;
+}
+
+fn run(o: *anyopaque, _: Allocator, value: ?Value, _: *Runner) anyerror!void {
+    const self: *Self = @ptrCast(@alignCast(o));
+    try self.stream.print("{?}\n", .{value});
+}
+
+fn deinit(o: *anyopaque, alloc: Allocator) void {
+    const self: *Self = @ptrCast(@alignCast(o));
+    alloc.destroy(self);
+}
+
+test {
+    const alloc = std.testing.allocator;
+
+    var runner: Runner = undefined;
+    try runner.init(alloc, .{});
+    defer runner.deinit(alloc);
+
+    var output = std.ArrayList(u8).init(alloc);
+    defer output.deinit();
+
+    try runner.pushJob(alloc, (struct {
+        fn func(a: Allocator, o: *std.ArrayList(u8), r: *Runner) !?Value {
+            const self = try create(a, o.writer().any());
+            defer self.unref(a);
+
+            try self.run(a, r);
+            return null;
+        }
+    }).func, .{ alloc, &output, &runner }, null);
+    try runner.run();
+}

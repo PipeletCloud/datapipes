@@ -5,7 +5,7 @@ const xev = @import("xev");
 const Self = @This();
 
 pub const Result = union(enum) {
-    value: Value,
+    value: ?Value,
     err: Error,
 
     pub const Value = @import("../../datapipes.zig").Value;
@@ -16,7 +16,7 @@ pub const Result = union(enum) {
 
     pub fn deinit(self: *Result, alloc: Allocator) void {
         return switch (self.*) {
-            .value => |val| val.deinit(alloc),
+            .value => |*o_val| if (o_val.*) |*val| val.deinit(alloc) else {},
             .err => {},
         };
     }
@@ -32,7 +32,10 @@ completion: xev.Completion,
 x_async: xev.Async,
 result: ?Result,
 
-pub fn init(self: *Self, loop: *xev.Loop, ptr: *anyopaque, deinitFn: ?DeinitFunc, runFn: RunFunc) !void {
+pub fn create(alloc: Allocator, loop: *xev.Loop, ptr: *anyopaque, deinitFn: ?DeinitFunc, runFn: RunFunc) !*Self {
+    const self = try alloc.create(Self);
+    errdefer alloc.destroy(self);
+
     self.* = .{
         .ptr = ptr,
         .deinitFn = deinitFn,
@@ -43,18 +46,20 @@ pub fn init(self: *Self, loop: *xev.Loop, ptr: *anyopaque, deinitFn: ?DeinitFunc
     };
 
     self.x_async.wait(loop, &self.completion, Self, self, waitCallback);
+    return self;
 }
 
 pub fn deinit(self: *Self, alloc: Allocator) void {
     self.x_async.deinit();
-    if (self.result) |r| r.deinit(alloc);
+    if (self.result) |*r| r.deinit(alloc);
     if (self.ptr) |p| {
         if (self.deinitFn) |f| f(p, alloc);
     }
+    alloc.destroy(self);
 }
 
 fn waitCallback(self_: ?*Self, _: *xev.Loop, _: *xev.Completion, r: xev.Async.WaitError!void) xev.CallbackAction {
-    const self = self_.? catch unreachable;
+    const self = self_ orelse unreachable;
     _ = r catch |err| {
         self.result = .{
             .err = .{ .tag = @errorName(err) },
@@ -62,12 +67,12 @@ fn waitCallback(self_: ?*Self, _: *xev.Loop, _: *xev.Completion, r: xev.Async.Wa
         return .rearm;
     };
 
-    return if (self.run()) .rearm else .disarm;
+    return if (self.run()) .disarm else .rearm;
 }
 
 pub fn run(self: *Self) bool {
     if (self.result) |_| return false;
 
-    self.result = if (self.vtable.run(self.ptr)) |value| .{ .value = value } else |err| .{ .err = .{ .tag = @errorName(err) } };
+    self.result = if (self.runFn(self.ptr)) |value| .{ .value = value } else |err| .{ .err = .{ .tag = @errorName(err) } };
     return true;
 }
