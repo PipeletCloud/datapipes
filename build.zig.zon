@@ -5,8 +5,8 @@
     .minimum_zig_version = "0.14.0",
     .dependencies = .{
         .scalarcore = .{
-            .url = "https://github.com/PipeletCloud/scalarcore/archive/5007deb97cd06ad1d2c6e9c1b1974bc3f4cc63e8.tar.gz",
-            .hash = "scalarcore-0.0.0-byTGeLFWAAC8LQxtj3Dtkcgl13PmsPPOuXU-2wiw-uK6",
+            .url = "https://github.com/PipeletCloud/scalarcore/archive/37452f2f4d922228e224db648d87460b79184d47.tar.gz",
+            .hash = "scalarcore-0.0.0-byTGePJWAACWcDOeptfCEPGIn1LtqiymYhNdt9XLYTp2",
         },
         .closure = .{
             .url = "https://github.com/PipeletCloud/zig-closure/archive/53c464672822507d5607ec4038b54a850609ce81.tar.gz",
