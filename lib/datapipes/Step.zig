@@ -1,85 +1,90 @@
 const std = @import("std");
 const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
-const Runner = @import("Runner.zig");
-const Value = @import("../datapipes.zig").Value;
+const closure = @import("closure");
+const scalarcore = @import("scalarcore");
+const Pipe = @import("Pipe.zig");
 const Self = @This();
 
-pub const Kind = enum {
-    source,
-    transformation,
-    output,
+pub const State = enum {
+    waiting,
+    running,
+    failed,
+    done,
 };
 
-pub const VTable = struct {
-    getInput: ?*const fn (*anyopaque, Allocator, ?*Self, *Runner) anyerror!*?Value,
-    getOutput: ?*const fn (*anyopaque, Allocator, ?*Self, *Runner) anyerror!*?Value,
-    run: *const fn (*anyopaque, Allocator, ?*Self, *Runner) anyerror!?Value,
-    deinit: *const fn (*anyopaque, Allocator) void,
-};
+pub const WorkFunc = fn (*Self, []const *Self, *Pipe, Allocator, *scalarcore.Runner, ?*anyopaque) anyerror!bool;
+pub const DeinitFunc = fn (?*anyopaque, Allocator) void;
 
 tag: []const u8,
-kind: Kind,
-ref_count: usize,
-ptr: *anyopaque,
-vtable: *const VTable,
-pipe_from: ?*Self,
+atomic_tx: std.atomic.Value(usize) = .init(0),
+atomic_rx: std.atomic.Value(usize) = .init(0),
+atomic_state: std.atomic.Value(u32) = .init(@intFromEnum(State.waiting)),
+work: *const WorkFunc,
+userdata: ?*anyopaque,
+deinit_userdata: ?*const DeinitFunc,
+ref_count: std.atomic.Value(usize) = .init(0),
 
-pub inline fn init(tag: []const u8, kind: Kind, ptr: *anyopaque, vtable: *const VTable) Self {
+pub fn init(tag: []const u8, work: *const WorkFunc, userdata: ?*anyopaque, deinit_userdata: ?*const DeinitFunc) Self {
     return .{
         .tag = tag,
-        .kind = kind,
-        .ref_count = 0,
-        .ptr = ptr,
-        .vtable = vtable,
-        .pipe_from = null,
+        .work = work,
+        .userdata = userdata,
+        .deinit_userdata = deinit_userdata,
     };
 }
 
-pub fn getInput(self: *Self, alloc: Allocator, runner: *Runner) !*?Value {
-    if (self.vtable.getInput) |f| {
-        assert(self.pipe_from != self);
-        return f(self.ptr, alloc, self.pipe_from, runner);
-    }
-    return error.NoInput;
-}
-
-pub fn getOutput(self: *Self, alloc: Allocator, runner: *Runner) !*?Value {
-    if (self.vtable.getOutput) |f| {
-        assert(self.pipe_from != self);
-        return f(self.ptr, alloc, self.pipe_from, runner);
-    }
-    return error.NoOutput;
-}
-
-pub fn deinit(self: *Self, alloc: Allocator) void {
-    assert(self.ref_count == 0);
-
-    if (self.pipe_from) |i| i.unref(alloc);
-
-    self.vtable.deinit(self.ptr, alloc);
-}
-
-pub fn unref(self: *Self, alloc: Allocator) void {
-    if (self.ref_count > 0) {
-        self.ref_count -= 1;
-        return;
+pub fn runSync(self: *Self, pipe: *Pipe, parents: []const *Self, alloc: Allocator, runner: *scalarcore.Runner) !bool {
+    if (self.state() == .waiting) {
+        self.atomic_tx.store(0, .monotonic);
+        self.atomic_rx.store(0, .monotonic);
+        self.atomic_state.store(@intFromEnum(State.running), .monotonic);
     }
 
-    self.deinit(alloc);
+    const should_continue = self.work(self, parents, pipe, alloc, runner, self.userdata) catch |err| {
+        self.atomic_state.store(@intFromEnum(State.failed), .monotonic);
+        return err;
+    };
+
+    if (!should_continue) self.atomic_state.store(@intFromEnum(State.done), .monotonic);
+    return should_continue;
+}
+
+pub fn runAsync(self: *Self, pipe: *Pipe, parents: []const *Self, alloc: Allocator, runner: *scalarcore.Runner) !void {
+    const rj = try alloc.create(closure.FixedClosure(runSync).Arguments);
+    errdefer alloc.destroy(rj);
+
+    rj.* = .{ self, pipe, parents, alloc, runner };
+
+    _ = try runner.pushJob(alloc, runAsyncCallback, rj);
+}
+
+fn runAsyncCallback(userdata: ?*anyopaque) anyerror!bool {
+    const rj: *closure.FixedClosure(runSync).Arguments = @ptrCast(@alignCast(userdata orelse unreachable));
+    defer rj[3].destroy(rj);
+    return try @call(.auto, runSync, rj.*);
 }
 
 pub fn ref(self: *Self) *Self {
-    self.ref_count += 1;
+    _ = self.ref_count.fetchAdd(1, .acq_rel);
     return self;
 }
 
-pub fn pipe(self: *Self, alloc: Allocator, source: *Self) void {
-    assert(source != self);
-    if (self.pipe_from) |i| i.unref(alloc);
-    self.pipe_from = source.ref();
+pub fn state(self: *const Self) State {
+    return @enumFromInt(self.atomic_state.load(.monotonic));
 }
 
-pub fn run(self: *Self, alloc: Allocator, runner: *Runner) !?Value {
-    return try self.vtable.run(self.ptr, alloc, self.pipe_from, runner);
+pub fn unref(self: *Self, alloc: Allocator) void {
+    if (self.ref_count.fetchSub(1, .acq_rel) == 0) {
+        return self.deinit(alloc);
+    }
+}
+
+pub fn deinit(self: *Self, alloc: Allocator) void {
+    assert(self.ref_count.load(.monotonic) == 0);
+    if (self.deinit_userdata) |f| f(self.userdata, alloc);
+}
+
+test {
+    std.testing.refAllDecls(@This());
 }

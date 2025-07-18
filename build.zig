@@ -5,7 +5,12 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const single_threaded = b.option(bool, "single-threaded", "Enable or disable threading support");
 
-    const xev = b.dependency("libxev", .{
+    const closure = b.dependency("closure", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const scalarcore = b.dependency("scalarcore", .{
         .target = target,
         .optimize = optimize,
     });
@@ -17,8 +22,12 @@ pub fn build(b: *std.Build) void {
         .single_threaded = single_threaded,
         .imports = &.{
             .{
-                .name = "xev",
-                .module = xev.module("xev"),
+                .name = "closure",
+                .module = closure.module("closure"),
+            },
+            .{
+                .name = "scalarcore",
+                .module = scalarcore.module("scalarcore"),
             },
         },
     });
